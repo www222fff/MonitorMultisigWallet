@@ -1,3 +1,0 @@
-pyzmq
-colorlog
-https://github.com/bitaps-com/aiojsonrpc
