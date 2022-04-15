@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/www222fff/monitorMultisigWalletGo/bitcoind"
 	"log"
+	"time"
 )
 
 const (
@@ -21,17 +22,15 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	count, err := bc.GetBlockCount()
-	log.Println(err, count)
+        for {
+	    count, err := bc.GetBlockCount()
+	    log.Println(err, count)
+            time.Sleep(1 * time.Second)
+        }
 	//walletpassphrase
 	//err = bc.WalletPassphrase(WALLET_PASSPHRASE, 3600)
 	//log.Println(err)
 
-	// backupwallet
-	/*
-		err = bc.BackupWallet("/tmp/wallet.dat")
-		log.Println(err)
-	*/
 
 	// dumpprivkey
 	/*
@@ -39,11 +38,6 @@ func main() {
 		log.Println(err, privKey)
 	*/
 
-	// encryptwallet
-	/*
-		err = bc.EncryptWallet(WALLET_PASSPHRASE)
-		log.Println(err)
-	*/
 
 	// getaccount
 	/*
@@ -80,89 +74,6 @@ func main() {
 		log.Println(err, bestblockhash)
 	*/
 
-	// getblock
-	/*
-		block, err := bc.GetBlock("00000000000000003f8d1861d035e44d4297c49bd2517dc0a44ad73c7091926c")
-		log.Println(err, block)
-	*/
-
-	// getblockcount
-	/*
-		count, err := bc.GetBlockCount()
-		log.Println(err, count)
-	*/
-
-	// getblockhash
-	/*
-		hash, err := bc.GetBlockHash(0)
-		log.Println(err, hash)
-	*/
-	// TODO a finir
-	// getBlockTemplate
-	/*
-		template, err := bc.GetBlockTemplate([]string{"longpoll"}, "template")
-		log.Println(err, template)
-	*/
-
-	// getconnectioncount
-	/*
-		count, err := bc.GetConnectionCount()
-		log.Println(err, count)
-	*/
-	// getdifficulty
-	/*
-		difficulty, err := bc.GetDifficulty()
-		log.Println(err, difficulty)
-	*/
-
-	// getgenerate
-	/*
-		generate, err := bc.GetGenerate()
-		log.Println(err, generate)
-	*/
-
-	// gethashespersec
-	/*
-		hashpersec, err := bc.GetHashesPerSec()
-		log.Println(hashpersec, err)
-	*/
-
-	// getinfo
-	/*
-		info, err := bc.GetInfo()
-
-		log.Println(err, info)
-	*/
-
-	// getmininginfo
-	/*
-		mininginfo, err := bc.GetMiningInfo()
-		log.Println(err, mininginfo)
-	*/
-
-	// getnewaddress
-	/*
-		newAddress, err := bc.GetNewAddress("test2")
-		log.Println(err, newAddress)
-	*/
-
-	// getpeerinfo
-	/*
-		peerInfo, err := bc.GetPeerInfo()
-		log.Println(err, peerInfo)
-	*/
-
-	// GetRawChangeAddress
-	/*
-		rawAddress, err := bc.GetRawChangeAddress("tests")
-		log.Println(err, rawAddress)
-	*/
-
-	// GetRawMempool
-	/*
-		txIds, err := bc.GetRawMempool()
-		log.Println(err, txIds)
-	*/
 
 	// getrawtransaction
 	/*
@@ -347,9 +258,4 @@ func main() {
 		log.Println(err)
 	*/
 
-	// WalletPassphraseChange
-	/*
-		err = bc.WalletPassphraseChange(WALLET_PASSPHRASE2, WALLET_PASSPHRASE)
-		log.Println(err)
-	*/
 }
