@@ -20,24 +20,23 @@ type Bitcoind struct {
 }
 
 // New return a new bitcoind
-func New(host string, port int, user, passwd string, useSSL bool, timeoutParam ...int) (*Bitcoind, error) {
+func New(host string, port int, wallet, user, passwd string, useSSL bool, timeoutParam ...int) (*Bitcoind, error) {
 	var timeout int = RPCCLIENT_TIMEOUT
 	// If the timeout is specified in timeoutParam, allow it.
 	if len(timeoutParam) != 0 {
 		timeout = timeoutParam[0]
 	}
 
-	rpcClient, err := newClient(host, port, user, passwd, useSSL, timeout)
+	rpcClient, err := newClient(host, port, wallet, user, passwd, useSSL, timeout)
 	if err != nil {
 		return nil, err
 	}
 	return &Bitcoind{rpcClient}, nil
 }
 
-// BackupWallet Safely copies wallet.dat to destination,
-// which can be a directory or a path with filename on the remote server
-func (b *Bitcoind) BackupWallet(destination string) error {
-	r, err := b.client.call("backupwallet", []string{destination})
+// loadWallet
+func (b *Bitcoind) LoadWallet(fileName string, load_on_startup bool) error {
+	r, err := b.client.call("loadwallet", []interface{}{fileName, load_on_startup})
 	return handleError(err, &r)
 }
 
@@ -51,11 +50,6 @@ func (b *Bitcoind) DumpPrivKey(address string) (privKey string, err error) {
 	return
 }
 
-// EncryptWallet encrypts the wallet with <passphrase>.
-func (b *Bitcoind) EncryptWallet(passphrase string) error {
-	r, err := b.client.call("encryptwallet", []string{passphrase})
-	return handleError(err, &r)
-}
 
 // GetAccount returns the account associated with the given address.
 func (b *Bitcoind) GetAccount(address string) (account string, err error) {
@@ -610,6 +604,15 @@ func (b *Bitcoind) ListTransactions(account string, count, from uint32) (transac
 	return
 }
 
+// ListWallets returns array of wallet.
+func (b *Bitcoind) ListWallet() (wallets []string, err error) {
+	r, err := b.client.call("listwallets", nil)
+	if err = handleError(err, &r); err != nil {
+		return
+	}
+	err = json.Unmarshal(r.Result, &wallets)
+	return
+}
 // ListUnspent returns array of unspent transaction inputs in the wallet.
 func (b *Bitcoind) ListUnspent(minconf, maxconf uint32) (transactions []Transaction, err error) {
 	if maxconf > 999999 {

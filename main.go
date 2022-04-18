@@ -10,26 +10,48 @@ const (
 	SERVER_HOST        = "127.0.0.1"
 	SERVER_PORT        = 8332
 	USER               = "danny"
-	PASSWD             = "dannypasswd"
+	PASSWD             = "danny_wang"
 	USESSL             = false
-	WALLET_PASSPHRASE  = "p1"
-	WALLET_PASSPHRASE2 = "p2"
+        WALLET_NAME        = "danny"
+	WALLET_PASSPHRASE  = "hs032122"
 )
 
+
+func Contains(slice []string, s string) int {
+	for index, value := range slice {
+		if value == s {
+			return index
+		}
+	}
+	return -1
+}
+
 func main() {
-	bc, err := bitcoind.New(SERVER_HOST, SERVER_PORT, USER, PASSWD, USESSL)
+	bc1, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", USER, PASSWD, USESSL)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
+        wallets, err := bc1.ListWallet()
+        r := Contains(wallets, WALLET_NAME)
+        if r == -1 {
+		err = bc1.LoadWallet(WALLET_NAME, false)
+		log.Println(err)
+        }
+
+	bc, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, USER, PASSWD, USESSL)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	err = bc.WalletPassphrase(WALLET_PASSPHRASE, 100000000)
+	log.Println(err)
+
         for {
-	    count, err := bc.GetBlockCount()
-	    log.Println(err, count)
+            transactions, err := bc.ListUnspent(1, 999999)
+	    log.Println(err, transactions)
             time.Sleep(1 * time.Second)
         }
-	//walletpassphrase
-	//err = bc.WalletPassphrase(WALLET_PASSPHRASE, 3600)
-	//log.Println(err)
 
 
 	// dumpprivkey
@@ -37,7 +59,6 @@ func main() {
 		privKey, err := bc.DumpPrivKey("1KU5DX7jKECLxh1nYhmQ7CahY7GMNMVLP3")
 		log.Println(err, privKey)
 	*/
-
 
 	// getaccount
 	/*
