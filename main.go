@@ -9,13 +9,14 @@ import (
 const (
 	SERVER_HOST        = "127.0.0.1"
 	SERVER_PORT        = 8332
-	USER               = "danny"
-	PASSWD             = "danny_wang"
+	RPCUSER            = "danny"
+	RPCPASSWD          = "danny_wang"
 	USESSL             = false
         WALLET_NAME        = "danny"
-	WALLET_PASSPHRASE  = "hs032122"
+	WALLET_PASSPHRASE  = "danny_passphrase"
 )
 
+var watch_addresses = []string{"btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"}
 
 func Contains(slice []string, s string) int {
 	for index, value := range slice {
@@ -27,7 +28,7 @@ func Contains(slice []string, s string) int {
 }
 
 func main() {
-	bc1, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", USER, PASSWD, USESSL)
+	bc1, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", RPCUSER, RPCPASSWD, USESSL)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -39,7 +40,7 @@ func main() {
 		log.Println(err)
         }
 
-	bc, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, USER, PASSWD, USESSL)
+	bc, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, RPCUSER, RPCPASSWD, USESSL)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -48,7 +49,7 @@ func main() {
 	log.Println(err)
 
         for {
-            transactions, err := bc.ListUnspent(1, 999999)
+            transactions, err := bc.ListUnspent(1, 999999, watch_addresses)
 	    log.Println(err, transactions)
             time.Sleep(1 * time.Second)
         }
