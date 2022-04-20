@@ -614,7 +614,7 @@ func (b *Bitcoind) ListWallet() (wallets []string, err error) {
 	return
 }
 // ListUnspent returns array of unspent transaction inputs in the wallet.
-func (b *Bitcoind) ListUnspent(minconf, maxconf uint32, addresses []string) (transactions []Transaction, err error) {
+func (b *Bitcoind) ListUnspent(minconf, maxconf uint32, addresses []string) (utxos []UTXO, err error) {
 	if maxconf > 999999 {
 		maxconf = 999999
 	}
@@ -622,7 +622,7 @@ func (b *Bitcoind) ListUnspent(minconf, maxconf uint32, addresses []string) (tra
 	if err = handleError(err, &r); err != nil {
 		return
 	}
-	err = json.Unmarshal(r.Result, &transactions)
+	err = json.Unmarshal(r.Result, &utxos)
 	return
 }
 

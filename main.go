@@ -13,7 +13,7 @@ const (
 	RPCPASSWD          = "danny_wang"
 	USESSL             = false
 	WALLET_NAME        = "danny"
-	WALLET_PASSPHRASE  = "danny_passphrase"
+	WALLET_PASSPHRASE  = "test"
       )
 
 var watch_addresses = []string{"btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"}
@@ -48,26 +48,30 @@ func main() {
 	err = bc.WalletPassphrase(WALLET_PASSPHRASE, 100000000)
 	log.Println(err)
 
-	utxoMap := make(map[string]bitcoind.Transaction)
+	utxoMap := make(map[string]bitcoind.UTXO)
 
 	for {
-		txs, err := bc.ListUnspent(1, 999999, watch_addresses)
-		log.Println(err, txs)
+		//list all utxo of watched multisig address
+		utxos, err := bc.ListUnspent(1, 999999, watch_addresses)
+		if err != nil {
+			log.Fatalln(err)
+		}
 
-		deltaUtxoMap := make(map[string]bitcoind.Transaction)
-		for _, tx := range txs {
-			_, ok := utxoMap[tx.TxID]
+		//filter delta utxo
+		deltaUtxoMap := make(map[string]bitcoind.UTXO)
+		for _, utxo := range utxos {
+			_, ok := utxoMap[utxo.TxID]
 			if (ok) {
-				log.Println("found existed utxo")
+				log.Println("existed utxo", utxo)
 			} else {
-				log.Println("found new utxo")
-				utxoMap[tx.TxID] = tx
-				deltaUtxoMap[tx.TxID] = tx
+				log.Println("found new utxo", utxo)
+				utxoMap[utxo.TxID] = utxo
+				deltaUtxoMap[utxo.TxID] = utxo
 			}
 		}
 
+		//handle new utxo, send deposit event
 		for txid := range deltaUtxoMap {
-			//send deposit event???
 			log.Println(txid)
 		}
 

@@ -73,6 +73,16 @@ type Transaction struct {
 	Hex             string               `json:"hex,omitempty"`
 }
 
+// UTXO represents a transaction
+type UTXO struct {
+	TxID            string               `json:"txid"`
+	Amount          float64              `json:"amount"`
+	Address         string               `json:"address,omitempty"`
+	ScriptPubKey    string               `json:"scriptPubKey"`
+	Label           string               `json:"label,omitempty"`
+}
+
+
 // UTransactionOut represents a unspent transaction out (UTXO)
 type UTransactionOut struct {
 	Bestblock     string       `json:"bestblock"`
