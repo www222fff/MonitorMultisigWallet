@@ -29,7 +29,7 @@ import (
 	metrics "github.com/Phala-Network/chainbridge-utils/metrics/types"
 	"github.com/Phala-Network/chainbridge-utils/msg"
 	"github.com/ChainSafe/log15"
-        "github.com/www222fff/watchUTXO/bitcoind"
+        "github.com/www222fff/watchUTXO/go-bitcoind"
 )
 
 var _ core.Chain = &Chain{}
@@ -41,6 +41,29 @@ type Chain struct {
 	writer   *writer           // The writer of the chain
 	stop     chan<- int
 }
+
+
+const (
+        SERVER_HOST        = "127.0.0.1"
+        SERVER_PORT        = 8332
+        RPCUSER            = "danny"
+        RPCPASSWD          = "danny_wang"
+        USESSL             = false
+        WALLET_NAME        = "danny"
+        WALLET_PASSPHRASE  = "test"
+      )
+
+var watch_addresses = []string{"btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"}
+
+func findWallet(slice []string, s string) int {
+        for index, value := range slice {
+                if value == s {
+                        return index
+                }
+        }
+        return -1
+}
+
 
 // checkBlockstore queries the blockstore for the latest known block. If the latest block is
 // greater than startBlock, then the latest block is returned, otherwise startBlock is.
@@ -58,48 +81,28 @@ func checkBlockstore(bs *blockstore.Blockstore, startBlock uint64) (uint64, erro
 }
 
 func InitializeChain(cfg *core.ChainConfig, logger log15.Logger, sysErr chan<- error, m *metrics.ChainMetrics) (*Chain, error) {
-	kp, err := keystore.KeypairFromAddress(cfg.From, keystore.SubChain, cfg.KeystorePath, cfg.Insecure)
-	if err != nil {
-		return nil, err
-	}
 
-	krp := kp.(*sr25519.Keypair).AsKeyringPair()
+        bc1, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", RPCUSER, RPCPASSWD, USESSL)
+        if err != nil {
+                log.Fatalln(err)
+        }
 
-	// Attempt to load latest block
-	bs, err := blockstore.NewBlockstore(cfg.BlockstorePath, cfg.Id, kp.Address())
-	if err != nil {
-		return nil, err
-	}
-	startBlock := parseStartBlock(cfg)
-	if !cfg.FreshStart {
-		startBlock, err = checkBlockstore(bs, startBlock)
-		if err != nil {
-			return nil, err
-		}
-	}
+        wallets, err := bc1.ListWallet()
+        r := findWallet(wallets, WALLET_NAME)
+        if r == -1 {
+                err = bc1.LoadWallet(WALLET_NAME, false)
+                log.Println(err)
+        }
+
+        conn, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, RPCUSER, RPCPASSWD, USESSL)
+        if err != nil {
+                log.Fatalln(err)
+        }
+
+        err = bc.WalletPassphrase(WALLET_PASSPHRASE, 100000000)
+        log.Println(err)
 
 	stop := make(chan int)
-	// Setup connection
-	conn := NewConnection(cfg.Endpoint, cfg.Name, krp, logger, stop, sysErr)
-	err = conn.Connect()
-	if err != nil {
-		return nil, err
-	}
-
-	err = conn.checkChainId(cfg.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	if cfg.LatestBlock {
-		curr, err := conn.api.RPC.Chain.GetHeaderLatest()
-		if err != nil {
-			return nil, err
-		}
-		startBlock = uint64(curr.Number)
-	}
-
-	ue := parseUseExtended(cfg)
 
 	// Setup listener & writer
 	l := NewListener(conn, cfg.Name, cfg.Id, startBlock, logger, bs, stop, sysErr, m)

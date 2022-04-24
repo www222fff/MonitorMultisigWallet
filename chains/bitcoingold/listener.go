@@ -24,7 +24,7 @@ type listener struct {
 	chainId       msg.ChainId
 	startBlock    uint64
 	blockstore    blockstore.Blockstorer
-	conn          *Connection
+	conn          *Bitcoind
 	subscriptions map[eventName]eventHandler // Handlers for specific events
 	router        chains.Router
 	log           log15.Logger
@@ -38,7 +38,7 @@ type listener struct {
 var BlockRetryInterval = time.Second * 5
 var BlockRetryLimit = 5
 
-func NewListener(conn *Connection, name string, id msg.ChainId, startBlock uint64, log log15.Logger, bs blockstore.Blockstorer, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
+func NewListener(conn *Bitcoind, name string, id msg.ChainId, startBlock uint64, log log15.Logger, bs blockstore.Blockstorer, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
 	return &listener{
 		name:          name,
 		chainId:       id,
@@ -101,82 +101,39 @@ var ErrBlockNotReady = errors.New("required result to be 32 bytes, but got 0")
 // Polling begins at the block defined in `l.startBlock`. Failed attempts to fetch the latest block or parse
 // a block will be retried up to BlockRetryLimit times before returning with an error.
 func (l *listener) pollBlocks() error {
-	var currentBlock = l.startBlock
-	var retry = BlockRetryLimit
-	for {
+
+        utxoMap := make(map[string]bitcoind.UTXO)
+
+        for {
 		select {
 		case <-l.stop:
 			return errors.New("terminated")
 		default:
-			// No more retries, goto next block
-			if retry == 0 {
-				l.sysErr <- fmt.Errorf("event polling retries exceeded (chain=%d, name=%s)", l.chainId, l.name)
-				return nil
-			}
-
-			// Get finalized block hash
-			finalizedHash, err := l.conn.api.RPC.Chain.GetFinalizedHead()
+			//list all utxo of watched multisig address
+			utxos, err := l.conn.ListUnspent(1, 999999, watch_addresses)
 			if err != nil {
-				l.log.Error("Failed to fetch finalized hash", "err", err)
-				retry--
-				time.Sleep(BlockRetryInterval)
-				continue
+				log.Fatalln(err)
 			}
 
-			// Get finalized block header
-			finalizedHeader, err := l.conn.api.RPC.Chain.GetHeader(finalizedHash)
-			if err != nil {
-				l.log.Error("Failed to fetch finalized header", "err", err)
-				retry--
-				time.Sleep(BlockRetryInterval)
-				continue
+			//filter delta utxo
+			deltaUtxoMap := make(map[string]bitcoind.UTXO)
+			for _, utxo := range utxos {
+				_, ok := utxoMap[utxo.TxID]
+				if (ok) {
+					log.Println("existed utxo", utxo)
+				} else {
+					log.Println("found new utxo", utxo)
+					utxoMap[utxo.TxID] = utxo
+					deltaUtxoMap[utxo.TxID] = utxo
+				}
 			}
 
-			if l.metrics != nil {
-				l.metrics.LatestKnownBlock.Set(float64(finalizedHeader.Number))
+			//handle new utxo, send deposit event
+			for txid := range deltaUtxoMap {
+				log.Println(txid)
 			}
 
-			// Sleep if the block we want comes after the most recently finalized block
-			if currentBlock > uint64(finalizedHeader.Number) {
-				l.log.Trace("Block not yet finalized", "target", currentBlock, "latest", finalizedHeader.Number)
-				time.Sleep(BlockRetryInterval)
-				continue
-			}
-
-			// Get hash for latest block, sleep and retry if not ready
-			hash, err := l.conn.api.RPC.Chain.GetBlockHash(currentBlock)
-			if err != nil && err.Error() == ErrBlockNotReady.Error() {
-				time.Sleep(BlockRetryInterval)
-				continue
-			} else if err != nil {
-				l.log.Error("Failed to query latest block", "block", currentBlock, "err", err)
-				retry--
-				time.Sleep(BlockRetryInterval)
-				continue
-			}
-
-			err = l.processBridgeTransfer(hash)
-			if err != nil {
-				l.log.Error("Failed to process bridge transfer in block", "block", currentBlock, "err", err)
-				retry--
-				continue
-			}
-
-			// Write to blockstore
-			err = l.blockstore.StoreBlock(big.NewInt(0).SetUint64(currentBlock))
-			if err != nil {
-				l.log.Error("Failed to write to blockstore", "err", err)
-			}
-
-			if l.metrics != nil {
-				l.metrics.BlocksProcessed.Inc()
-				l.metrics.LatestProcessedBlock.Set(float64(currentBlock))
-			}
-
-			currentBlock++
-			l.latestBlock.Height = big.NewInt(0).SetUint64(currentBlock)
-			l.latestBlock.LastUpdated = time.Now()
-			retry = BlockRetryLimit
+			time.Sleep(1 * time.Second)
 		}
 	}
 }
