@@ -1,3 +1,3 @@
-module monitorMultisigWalletGo
+module main
 
 go 1.13
