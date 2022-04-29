@@ -1,7 +1,7 @@
 // Copyright 2020 ChainSafe Systems
 // SPDX-License-Identifier: LGPL-3.0-only
 
-package substrate
+package bitcoingold
 
 import (
 	"errors"
@@ -17,6 +17,7 @@ import (
 	metrics "github.com/Phala-Network/chainbridge-utils/metrics/types"
 	"github.com/Phala-Network/chainbridge-utils/msg"
 	"github.com/Phala-Network/go-substrate-rpc-client/v3/types"
+        "github.com/www222fff/watchUTXO/go-bitcoind"
 )
 
 type listener struct {
@@ -60,15 +61,6 @@ func (l *listener) setRouter(r chains.Router) {
 
 // start creates the initial subscription for all events
 func (l *listener) start() error {
-	// Check whether latest is less than starting block
-	header, err := l.conn.api.RPC.Chain.GetHeaderLatest()
-	if err != nil {
-		return err
-	}
-	if uint64(header.Number) < l.startBlock {
-		return fmt.Errorf("starting block (%d) is greater than latest known block (%d)", l.startBlock, header.Number)
-	}
-
 	for _, sub := range Subscriptions {
 		err := l.registerEventHandler(sub.name, sub.handler)
 		if err != nil {
@@ -94,8 +86,6 @@ func (l *listener) registerEventHandler(name eventName, handler eventHandler) er
 	l.subscriptions[name] = handler
 	return nil
 }
-
-var ErrBlockNotReady = errors.New("required result to be 32 bytes, but got 0")
 
 // pollBlocks will poll for the latest block and proceed to parse the associated events as it sees new blocks.
 // Polling begins at the block defined in `l.startBlock`. Failed attempts to fetch the latest block or parse
@@ -134,119 +124,6 @@ func (l *listener) pollBlocks() error {
 			}
 
 			time.Sleep(1 * time.Second)
-		}
-	}
-}
-
-// processBridgeTransfer filter bridge transfer data from onchain storage and wrap it into relevant events
-func (l *listener) processBridgeTransfer(hash types.Hash) error {
-	l.log.Trace("Fetching storage for bridge transfer", "hash", hash.Hex())
-	meta := l.conn.getMetadata()
-	key, err := types.CreateStorageKey(&meta, "ChainBridge", "BridgeEvents", nil, nil)
-	if err != nil {
-		return err
-	}
-
-	var bridgeEvents BridgeEvents
-	_, err = l.conn.api.RPC.State.GetStorage(key, &bridgeEvents, hash)
-	if err != nil {
-		return err
-	}
-
-	e := utils.Events{}
-	transferNum := len(bridgeEvents)
-	for i := 0; i < transferNum; i++ {
-		if bridgeEvents[i].IsFungible {
-			data := events.EventFungibleTransfer{}
-			data.Destination = bridgeEvents[i].FungibleTransfer.Destination
-			data.DepositNonce = bridgeEvents[i].FungibleTransfer.DepositNonce
-			data.ResourceId = bridgeEvents[i].FungibleTransfer.ResourceId
-			data.Amount = bridgeEvents[i].FungibleTransfer.Amount
-			data.Recipient = bridgeEvents[i].FungibleTransfer.Recipient
-
-			e.ChainBridge_FungibleTransfer = append(e.ChainBridge_FungibleTransfer, data)
-		} else if bridgeEvents[i].IsNonFungible {
-			data := events.EventNonFungibleTransfer{}
-			data.Destination = bridgeEvents[i].NonFungibleTransfer.Destination
-			data.DepositNonce = bridgeEvents[i].NonFungibleTransfer.DepositNonce
-			data.ResourceId = bridgeEvents[i].NonFungibleTransfer.ResourceId
-			data.TokenId = bridgeEvents[i].NonFungibleTransfer.TokenId
-			data.Recipient = bridgeEvents[i].NonFungibleTransfer.Recipient
-			data.Metadata = bridgeEvents[i].NonFungibleTransfer.Metadata
-
-			e.ChainBridge_NonFungibleTransfer = append(e.ChainBridge_NonFungibleTransfer, data)
-		} else if bridgeEvents[i].IsGeneric {
-			data := events.EventGenericTransfer{}
-			data.Destination = bridgeEvents[i].NonFungibleTransfer.Destination
-			data.DepositNonce = bridgeEvents[i].NonFungibleTransfer.DepositNonce
-			data.ResourceId = bridgeEvents[i].NonFungibleTransfer.ResourceId
-			data.Metadata = bridgeEvents[i].NonFungibleTransfer.Metadata
-
-			e.ChainBridge_GenericTransfer = append(e.ChainBridge_GenericTransfer, data)
-		} else {
-			return fmt.Errorf("unknow bridge transfer type: %v", bridgeEvents[i])
-		}
-	}
-
-	l.handleEvents(e)
-	l.log.Trace("Finished processing events", "block", hash.Hex())
-
-	return nil
-}
-
-// processEvents fetches a block and parses out the events, calling Listener.handleEvents()
-func (l *listener) processEvents(hash types.Hash) error {
-	l.log.Trace("Fetching block for events", "hash", hash.Hex())
-	meta := l.conn.getMetadata()
-	key, err := types.CreateStorageKey(&meta, "System", "Events", nil, nil)
-	if err != nil {
-		return err
-	}
-
-	var records types.EventRecordsRaw
-	_, err = l.conn.api.RPC.State.GetStorage(key, &records, hash)
-	if err != nil {
-		return err
-	}
-
-	e := utils.Events{}
-	err = records.DecodeEventRecords(&meta, &e)
-	if err != nil {
-		return err
-	}
-
-	l.handleEvents(e)
-	l.log.Trace("Finished processing events", "block", hash.Hex())
-
-	return nil
-}
-
-// handleEvents calls the associated handler for all registered event types
-func (l *listener) handleEvents(evts utils.Events) {
-	if l.subscriptions[FungibleTransfer] != nil {
-		for _, evt := range evts.ChainBridge_FungibleTransfer {
-			l.log.Trace("Handling FungibleTransfer event")
-			l.submitMessage(l.subscriptions[FungibleTransfer](evt, l.log))
-		}
-	}
-	if l.subscriptions[NonFungibleTransfer] != nil {
-		for _, evt := range evts.ChainBridge_NonFungibleTransfer {
-			l.log.Trace("Handling NonFungibleTransfer event")
-			l.submitMessage(l.subscriptions[NonFungibleTransfer](evt, l.log))
-		}
-	}
-	if l.subscriptions[GenericTransfer] != nil {
-		for _, evt := range evts.ChainBridge_GenericTransfer {
-			l.log.Trace("Handling GenericTransfer event")
-			l.submitMessage(l.subscriptions[GenericTransfer](evt, l.log))
-		}
-	}
-
-	if len(evts.System_CodeUpdated) > 0 {
-		l.log.Trace("Received CodeUpdated event")
-		err := l.conn.updateMetatdata()
-		if err != nil {
-			l.log.Error("Unable to update Metadata", "error", err)
 		}
 	}
 }
