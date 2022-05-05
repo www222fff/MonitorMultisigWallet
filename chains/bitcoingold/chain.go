@@ -22,10 +22,7 @@ As the writer receives messages from the router, it constructs proposals. If a p
 package bitcoingold
 
 import (
-	"github.com/Phala-Network/chainbridge-utils/blockstore"
 	"github.com/Phala-Network/chainbridge-utils/core"
-	"github.com/Phala-Network/chainbridge-utils/crypto/sr25519"
-	"github.com/Phala-Network/chainbridge-utils/keystore"
 	metrics "github.com/Phala-Network/chainbridge-utils/metrics/types"
 	"github.com/Phala-Network/chainbridge-utils/msg"
 	"github.com/ChainSafe/log15"
@@ -36,7 +33,7 @@ var _ core.Chain = &Chain{}
 
 type Chain struct {
 	cfg      *core.ChainConfig // The config of the chain
-	conn     *Connection       // THe chains connection
+	conn     *bitcoind.Bitcoind       // The chains connection
 	listener *listener         // The listener of this chain
 	writer   *writer           // The writer of the chain
 	stop     chan<- int
@@ -53,7 +50,6 @@ const (
         WALLET_PASSPHRASE  = "test"
       )
 
-var watch_addresses = []string{"btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"}
 
 func findWallet(slice []string, s string) int {
         for index, value := range slice {
@@ -65,51 +61,40 @@ func findWallet(slice []string, s string) int {
 }
 
 
-// checkBlockstore queries the blockstore for the latest known block. If the latest block is
-// greater than startBlock, then the latest block is returned, otherwise startBlock is.
-func checkBlockstore(bs *blockstore.Blockstore, startBlock uint64) (uint64, error) {
-	latestBlock, err := bs.TryLoadLatestBlock()
-	if err != nil {
-		return 0, err
-	}
-
-	if latestBlock.Uint64() > startBlock {
-		return latestBlock.Uint64(), nil
-	} else {
-		return startBlock, nil
-	}
-}
-
 func InitializeChain(cfg *core.ChainConfig, logger log15.Logger, sysErr chan<- error, m *metrics.ChainMetrics) (*Chain, error) {
 
-        bc1, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", RPCUSER, RPCPASSWD, USESSL)
+        conn_chain, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", RPCUSER, RPCPASSWD, USESSL)
         if err != nil {
-                log.Fatalln(err)
+                return nil, err
         }
 
-        wallets, err := bc1.ListWallet()
+        wallets, err := conn_chain.ListWallet()
         r := findWallet(wallets, WALLET_NAME)
         if r == -1 {
-                err = bc1.LoadWallet(WALLET_NAME, false)
-                log.Println(err)
+                err = conn_chain.LoadWallet(WALLET_NAME, false)
+                if err != nil {
+			return nil, err
+		}
         }
 
-        conn, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, RPCUSER, RPCPASSWD, USESSL)
+        conn_wallet, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, RPCUSER, RPCPASSWD, USESSL)
         if err != nil {
-                log.Fatalln(err)
+		return nil, err
         }
 
-        err = bc.WalletPassphrase(WALLET_PASSPHRASE, 100000000)
-        log.Println(err)
+        err = conn_wallet.WalletPassphrase(WALLET_PASSPHRASE, 100000000)
+        if err != nil {
+		return nil, err
+        }
 
 	stop := make(chan int)
 
 	// Setup listener & writer
-	l := NewListener(conn, cfg.Name, cfg.Id, startBlock, logger, bs, stop, sysErr, m)
-	w := NewWriter(conn, logger, sysErr, m, ue)
+	l := NewListener(conn_wallet, cfg.Name, cfg.From, cfg.Id, logger, stop, sysErr, m)
+	w := NewWriter(conn_wallet, logger, sysErr, m, false)
 	return &Chain{
 		cfg:      cfg,
-		conn:     conn,
+		conn:     conn_wallet,
 		listener: l,
 		writer:   w,
 		stop:     stop,
@@ -121,7 +106,7 @@ func (c *Chain) Start() error {
 	if err != nil {
 		return err
 	}
-	c.conn.log.Debug("Successfully started chain", "chainId", c.cfg.Id)
+	log15.Debug("Successfully started chain", "chainId", c.cfg.Id)
 	return nil
 }
 

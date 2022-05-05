@@ -6,26 +6,20 @@ package bitcoingold
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/ChainSafe/log15"
 	"github.com/Phala-Network/ChainBridge/chains"
-	utils "github.com/Phala-Network/ChainBridge/shared/substrate"
-	events "github.com/Phala-Network/chainbridge-substrate-events"
-	"github.com/Phala-Network/chainbridge-utils/blockstore"
 	metrics "github.com/Phala-Network/chainbridge-utils/metrics/types"
 	"github.com/Phala-Network/chainbridge-utils/msg"
-	"github.com/Phala-Network/go-substrate-rpc-client/v3/types"
         "github.com/www222fff/watchUTXO/go-bitcoind"
 )
 
 type listener struct {
 	name          string
+        watchAddr     []string
 	chainId       msg.ChainId
-	startBlock    uint64
-	blockstore    blockstore.Blockstorer
-	conn          *Bitcoind
+	conn          *bitcoind.Bitcoind
 	subscriptions map[eventName]eventHandler // Handlers for specific events
 	router        chains.Router
 	log           log15.Logger
@@ -37,14 +31,12 @@ type listener struct {
 
 // Frequency of polling for a new block
 var BlockRetryInterval = time.Second * 5
-var BlockRetryLimit = 5
 
-func NewListener(conn *Bitcoind, name string, id msg.ChainId, startBlock uint64, log log15.Logger, bs blockstore.Blockstorer, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
+func NewListener(conn *bitcoind.Bitcoind, name string, from string, id msg.ChainId, log log15.Logger, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
 	return &listener{
 		name:          name,
+                watchAddr:     []string{from},
 		chainId:       id,
-		startBlock:    startBlock,
-		blockstore:    bs,
 		conn:          conn,
 		subscriptions: make(map[eventName]eventHandler),
 		log:           log,
@@ -100,9 +92,9 @@ func (l *listener) pollBlocks() error {
 			return errors.New("terminated")
 		default:
 			//list all utxo of watched multisig address
-			utxos, err := l.conn.ListUnspent(1, 999999, watch_addresses)
+			utxos, err := l.conn.ListUnspent(1, 999999, l.watchAddr)
 			if err != nil {
-				log.Fatalln(err)
+				l.log.Error("Listunspent failed", "err", err)
 			}
 
 			//filter delta utxo
@@ -110,20 +102,20 @@ func (l *listener) pollBlocks() error {
 			for _, utxo := range utxos {
 				_, ok := utxoMap[utxo.TxID]
 				if (ok) {
-					log.Println("existed utxo", utxo)
+					l.log.Info("existing utxo", utxo)
 				} else {
-					log.Println("found new utxo", utxo)
+					l.log.Info("found new utxo", utxo)
 					utxoMap[utxo.TxID] = utxo
 					deltaUtxoMap[utxo.TxID] = utxo
 				}
 			}
 
-			//handle new utxo, send deposit event
+			//handle new utxo, send deposit event TBD?
 			for txid := range deltaUtxoMap {
-				log.Println(txid)
+                                l.log.Info("send deposit event", txid);
 			}
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(BlockRetryInterval)
 		}
 	}
 }
