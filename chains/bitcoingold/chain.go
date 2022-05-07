@@ -43,8 +43,8 @@ type Chain struct {
 const (
         SERVER_HOST        = "127.0.0.1"
         SERVER_PORT        = 8332
-        RPCUSER            = "danny"
-        RPCPASSWD          = "danny_wang"
+        RPCUSER            = "user"
+        RPCPASSWD          = "passwd"
         USESSL             = false
         WALLET_NAME        = "danny"
         WALLET_PASSPHRASE  = "test"
