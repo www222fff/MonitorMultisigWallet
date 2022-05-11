@@ -102,9 +102,9 @@ func (l *listener) pollBlocks() error {
 			for _, utxo := range utxos {
 				_, ok := utxoMap[utxo.TxID]
 				if (ok) {
-					l.log.Info("existing utxo", utxo)
+					l.log.Info("existing ", "utxo", utxo)
 				} else {
-					l.log.Info("found new utxo", utxo)
+					l.log.Info("found new ", "utxo", utxo)
 					utxoMap[utxo.TxID] = utxo
 					deltaUtxoMap[utxo.TxID] = utxo
 				}
@@ -112,7 +112,7 @@ func (l *listener) pollBlocks() error {
 
 			//handle new utxo, send deposit event TBD?
 			for txid := range deltaUtxoMap {
-                                l.log.Info("send deposit event", txid);
+                                l.log.Info("send deposit event", "txid", txid);
 			}
 
 			time.Sleep(BlockRetryInterval)

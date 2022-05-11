@@ -41,11 +41,8 @@ type Chain struct {
 
 
 const (
-        SERVER_HOST        = "127.0.0.1"
-        SERVER_PORT        = 8332
         RPCUSER            = "user"
         RPCPASSWD          = "passwd"
-        USESSL             = false
         WALLET_NAME        = "danny"
         WALLET_PASSPHRASE  = "test"
       )
@@ -63,7 +60,7 @@ func findWallet(slice []string, s string) int {
 
 func InitializeChain(cfg *core.ChainConfig, logger log15.Logger, sysErr chan<- error, m *metrics.ChainMetrics) (*Chain, error) {
 
-        conn_chain, err := bitcoind.New(SERVER_HOST, SERVER_PORT, "", RPCUSER, RPCPASSWD, USESSL)
+        conn_chain, err := bitcoind.New(cfg.Endpoint, "", RPCUSER, RPCPASSWD, false)
         if err != nil {
                 return nil, err
         }
@@ -77,7 +74,7 @@ func InitializeChain(cfg *core.ChainConfig, logger log15.Logger, sysErr chan<- e
 		}
         }
 
-        conn_wallet, err := bitcoind.New(SERVER_HOST, SERVER_PORT, WALLET_NAME, RPCUSER, RPCPASSWD, USESSL)
+        conn_wallet, err := bitcoind.New(cfg.Endpoint, WALLET_NAME, RPCUSER, RPCPASSWD, false)
         if err != nil {
 		return nil, err
         }

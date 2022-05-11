@@ -56,8 +56,8 @@ type rpcResponse struct {
 	Err    *RPCError       `json:"error"`
 }
 
-func newClient(host string, port int, wallet, user, passwd string, useSSL bool, timeout int) (c *rpcClient, err error) {
-	if len(host) == 0 {
+func newClient(endpoint, wallet, user, passwd string, useSSL bool, timeout int) (c *rpcClient, err error) {
+	if len(endpoint) == 0 {
 		err = errors.New("Bad call missing argument host")
 		return
 	}
@@ -75,9 +75,9 @@ func newClient(host string, port int, wallet, user, passwd string, useSSL bool, 
 	}
 
         if wallet == ""{
-		c = &rpcClient{serverAddr: fmt.Sprintf("%s%s:%d", serverAddr, host, port), user: user, passwd: passwd, httpClient: httpClient, timeout: timeout}
+		c = &rpcClient{serverAddr: fmt.Sprintf("%s%s", serverAddr, endpoint), user: user, passwd: passwd, httpClient: httpClient, timeout: timeout}
 	} else {
-		c = &rpcClient{serverAddr: fmt.Sprintf("%s%s:%d/wallet/%s", serverAddr, host, port, wallet), user: user, passwd: passwd, httpClient: httpClient, timeout: timeout}
+		c = &rpcClient{serverAddr: fmt.Sprintf("%s%s/wallet/%s", serverAddr, endpoint, wallet), user: user, passwd: passwd, httpClient: httpClient, timeout: timeout}
 	}
 	return
 }
