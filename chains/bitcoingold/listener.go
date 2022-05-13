@@ -30,7 +30,7 @@ type listener struct {
 }
 
 // Frequency of polling for a new block
-var BlockRetryInterval = time.Second * 5
+var BlockRetryInterval = time.Second * 1
 
 func NewListener(conn *bitcoind.Bitcoind, name string, from string, id msg.ChainId, log log15.Logger, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
 	return &listener{
@@ -102,9 +102,9 @@ func (l *listener) pollBlocks() error {
 			for _, utxo := range utxos {
 				_, ok := utxoMap[utxo.TxID]
 				if (ok) {
-					l.log.Info("existing ", "utxo", utxo)
+					l.log.Info("no change", "utxo", utxo)
 				} else {
-					l.log.Info("found new ", "utxo", utxo)
+					l.log.Info("found change", "utxo", utxo)
 					utxoMap[utxo.TxID] = utxo
 					deltaUtxoMap[utxo.TxID] = utxo
 				}
