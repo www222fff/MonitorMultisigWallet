@@ -31,6 +31,7 @@ type listener struct {
 
 // Frequency of polling for a new block
 var BlockRetryInterval = time.Second * 1
+var BlockRetryLimit = 5
 
 func NewListener(conn *bitcoind.Bitcoind, name string, from string, id msg.ChainId, log log15.Logger, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
 	return &listener{
@@ -53,15 +54,8 @@ func (l *listener) setRouter(r chains.Router) {
 
 // start creates the initial subscription for all events
 func (l *listener) start() error {
-	for _, sub := range Subscriptions {
-		err := l.registerEventHandler(sub.name, sub.handler)
-		if err != nil {
-			return err
-		}
-	}
-
 	go func() {
-		err := l.pollBlocks()
+		err := l.poolUtxo()
 		if err != nil {
 			l.log.Error("Polling blocks failed", "err", err)
 		}
@@ -70,20 +64,12 @@ func (l *listener) start() error {
 	return nil
 }
 
-// registerEventHandler enables a handler for a given event. This cannot be used after Start is called.
-func (l *listener) registerEventHandler(name eventName, handler eventHandler) error {
-	if l.subscriptions[name] != nil {
-		return fmt.Errorf("event %s already registered", name)
-	}
-	l.subscriptions[name] = handler
-	return nil
-}
-
-// pollBlocks will poll for the latest block and proceed to parse the associated events as it sees new blocks.
+// poolUtxo will poll for the latest block and proceed to parse the associated events as it sees new blocks.
 // Polling begins at the block defined in `l.startBlock`. Failed attempts to fetch the latest block or parse
 // a block will be retried up to BlockRetryLimit times before returning with an error.
-func (l *listener) pollBlocks() error {
-
+func (l *listener) poolUtxo() error {
+	l.log.Info("Polling UTXO...")
+	var retry = BlockRetryLimit
         utxoMap := make(map[string]bitcoind.UTXO)
 
         for {
@@ -91,44 +77,112 @@ func (l *listener) pollBlocks() error {
 		case <-l.stop:
 			return errors.New("terminated")
 		default:
+                        // No more retries, goto next block
+                        if retry == 0 {
+                                l.log.Error("Polling failed, retries exceeded")
+                                l.sysErr <- ErrFatalPolling
+                                return nil
+                        }
+
 			//list all utxo of watched multisig address
 			utxos, err := l.conn.ListUnspent(1, 999999, l.watchAddr)
 			if err != nil {
 				l.log.Error("Listunspent failed", "err", err)
+                                retry--
+                                time.Sleep(BlockRetryInterval)
+                                continue
 			}
 
 			//filter delta utxo
 			deltaUtxoMap := make(map[string]bitcoind.UTXO)
-			for _, utxo := range utxos {
-				_, ok := utxoMap[utxo.TxID]
-				if (ok) {
-					l.log.Info("no change", "utxo", utxo)
+
+			for txid, utxo := range utxos {
+				utxoMap[txid].Refresh = true;
+
+				if _, ok := utxoMap[txid]; ok {
+					l.log.Info("existing", "utxo", utxo)
 				} else {
-					l.log.Info("found change", "utxo", utxo)
-					utxoMap[utxo.TxID] = utxo
-					deltaUtxoMap[utxo.TxID] = utxo
+					l.log.Info("new added", "utxo", utxo)
+					deltaUtxoMap[txid] = utxo
+				}
+			}
+
+			//update utxoMap based on the latest utxos
+			for k, v := range utxoMap {
+				if v.Refresh {
+					v.Refresh = false
+				} else {
+					delete(utxoMap, k)
 				}
 			}
 
 			//handle new utxo, send deposit event TBD?
-			for txid := range deltaUtxoMap {
-                                l.log.Info("send deposit event", "txid", txid);
+			for k, v := range deltaUtxoMap {
+                                l.log.Info("send deposit event", "txid", k);
+				// Parse out events
+	                        err = l.generateDepositEventsForUtxo(v])
+		                if err != nil {
+					l.log.Error("Failed to generate events for utxo", "tx", v, "err", err)
+				}
 			}
 
+			//pooling interval
 			time.Sleep(BlockRetryInterval)
+                        retry = BlockRetryLimit
 		}
 	}
 }
 
-// submitMessage inserts the chainId into the msg and sends it to the router
-func (l *listener) submitMessage(m msg.Message, err error) {
-	if err != nil {
-		log15.Error("Critical error processing event", "err", err)
-		return
-	}
-	m.Source = l.chainId
-	err = l.router.Send(m)
-	if err != nil {
-		log15.Error("failed to process event", "err", err)
-	}
+func (l *listener) generateDepositEventsForUtxo(utxo bitcoind.UTXO) error {
+        l.log.Debug("Querying block for deposit events", "block", latestBlock)
+        query := buildQuery(l.cfg.bridgeContract, utils.Deposit, latestBlock, latestBlock)
+
+        // querying for logs
+        logs, err := l.conn.Client().FilterLogs(context.Background(), query)
+        if err != nil {
+                return fmt.Errorf("unable to Filter Logs: %w", err)
+        }
+
+        // read through the log events and handle their deposit event if handler is recognized
+        for _, log := range logs {
+                var m msg.Message
+                destId := msg.ChainId(log.Topics[1].Big().Uint64())
+                rId := msg.ResourceIdFromSlice(log.Topics[2].Bytes())
+                nonce := msg.Nonce(log.Topics[3].Big().Uint64())
+
+                addr, err := l.bridgeContract.ResourceIDToHandlerAddress(&bind.CallOpts{From: l.conn.Keypair().CommonAddress()}, rId)
+                if err != nil {
+                        return fmt.Errorf("failed to get handler from resource ID %x", rId)
+                }
+
+                m, err = l.handleBtgDepositedEvent(destId, nonce)
+                if err != nil {
+                        return err
+                }
+
+                err = l.router.Send(m)
+                if err != nil {
+                        l.log.Error("subscription error: failed to route message", "err", err)
+                }
+        }
 }
+
+func (l *listener) handleBtgDepositedEvent(destId msg.ChainId, nonce msg.Nonce) (msg.Message, error) {
+        l.log.Info("Handling fungible deposit event", "dest", destId, "nonce", nonce)
+
+        record, err := l.erc20HandlerContract.GetDepositRecord(&bind.CallOpts{From: l.conn.Keypair().CommonAddress()}, uint64(nonce), uint8(destId))
+        if err != nil {
+                l.log.Error("Error Unpacking ERC20 Deposit Record", "err", err)
+                return msg.Message{}, err
+        }
+
+        return msg.NewFungibleTransfer(
+                l.cfg.id,
+                destId,
+                nonce,
+                record.Amount,
+                record.ResourceID,
+                record.DestinationRecipientAddress,
+        ), nil
+}
+

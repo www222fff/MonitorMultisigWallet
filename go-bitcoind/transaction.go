@@ -80,6 +80,7 @@ type UTXO struct {
 	Address         string               `json:"address,omitempty"`
 	ScriptPubKey    string               `json:"scriptPubKey"`
 	Label           string               `json:"label,omitempty"`
+	Refresh         bool                 `json:"label,omitempty"`
 }
 
 

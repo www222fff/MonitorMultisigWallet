@@ -33,5 +33,6 @@ func NewWriter(conn *bitcoind.Bitcoind, log log15.Logger, sysErr chan<- error, m
 
 func (w *writer) ResolveMessage(m msg.Message) bool {
 
+	//TBD
 	return true
 }
