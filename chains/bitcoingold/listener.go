@@ -6,12 +6,14 @@ package bitcoingold
 import (
 	"errors"
 	"time"
+	"strconv"
 	"math/big"
 	"github.com/ChainSafe/log15"
-	"github.com/Phala-Network/ChainBridge/chains"
-	metrics "github.com/Phala-Network/chainbridge-utils/metrics/types"
-	"github.com/Phala-Network/chainbridge-utils/msg"
+	"github.com/ChainSafe/ChainBridge/chains"
+	metrics "github.com/ChainSafe/chainbridge-utils/metrics/types"
+	"github.com/ChainSafe/chainbridge-utils/msg"
         "github.com/www222fff/watchUTXO/go-bitcoind"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 type listener struct {
@@ -28,7 +30,7 @@ type listener struct {
 }
 
 // Frequency of polling for a new block
-var BlockRetryInterval = time.Second * 1
+var BlockRetryInterval = time.Second * 5
 var BlockRetryLimit = 5
 var ErrFatalPolling = errors.New("listener UTXO polling failed")
 
@@ -69,6 +71,7 @@ func (l *listener) poolUtxo() error {
 	l.log.Info("Polling UTXO...")
 	var retry = BlockRetryLimit
         utxoMap := make(map[string]bitcoind.UTXO)
+	var index = 0
 
         for {
 		select {
@@ -83,13 +86,22 @@ func (l *listener) poolUtxo() error {
                         }
 
 			//list all utxo of watched multisig address
-			utxos, err := l.conn.ListUnspent(1, 999999, l.watchAddr)
+			/*utxos, err := l.conn.ListUnspent(1, 999999, l.watchAddr)
 			if err != nil {
 				l.log.Error("Listunspent failed", "err", err)
                                 retry--
                                 time.Sleep(BlockRetryInterval)
                                 continue
-			}
+			}*/
+
+			//Just for debug test
+			var utxos []bitcoind.UTXO
+			var utxo bitcoind.UTXO
+			index ++
+			utxo.TxID = "f35103085b7145e569eb8053365c662cb7b9b7fd6009e37cafbb684bd89b638b" + strconv.Itoa(index)
+			utxo.Amount = 100
+			utxo.Address = "btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"
+			utxos = append(utxos, utxo)
 
 			//filter delta utxo
 			deltaUtxoMap := make(map[string]bitcoind.UTXO)
@@ -118,7 +130,7 @@ func (l *listener) poolUtxo() error {
 			for k, v := range deltaUtxoMap {
                                 l.log.Info("send deposit event", "txid", k);
 				// Parse out events
-	                        err = l.triggerDepositEvent(v)
+	                        err := l.triggerDepositEvent(v, index)
 		                if err != nil {
 					l.log.Error("Failed to trigger events for utxo", "tx", v, "err", err)
 				}
@@ -131,14 +143,14 @@ func (l *listener) poolUtxo() error {
 	}
 }
 
-func (l *listener) triggerDepositEvent(utxo bitcoind.UTXO) error {
+func (l *listener) triggerDepositEvent(utxo bitcoind.UTXO, index int) error {
         l.log.Debug("Construct deposit events", "utxo", utxo)
 
 	srcId := msg.ChainId(l.chainId)
-	destId := msg.ChainId(1)
-	nonce := msg.Nonce(123)
+	destId := msg.ChainId(1)   //1 is subchain id
+	nonce := msg.Nonce(index)
         amount := big.NewInt(int64(utxo.Amount))
-	rId := msg.ResourceIdFromSlice([]byte(utxo.TxID))
+	rId := msg.ResourceIdFromSlice(hexutil.MustDecode("0x000000000000000000000000000000c76ebe4a02bbc34786d860b355f5a5ce00"))
 	recipientAddr := []byte("Btg/From/" + utxo.Address)
 
         m := msg.NewFungibleTransfer(srcId, destId, nonce, amount, rId, recipientAddr)
