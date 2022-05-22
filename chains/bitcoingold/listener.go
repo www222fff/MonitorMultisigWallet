@@ -14,6 +14,9 @@ import (
 	"github.com/ChainSafe/chainbridge-utils/msg"
         "github.com/www222fff/watchUTXO/go-bitcoind"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	utils "github.com/ChainSafe/ChainBridge/shared/substrate"
+	"github.com/ChainSafe/chainbridge-utils/keystore"
+	"github.com/centrifuge/go-substrate-rpc-client/types"
 )
 
 type listener struct {
@@ -54,6 +57,12 @@ func (l *listener) setRouter(r chains.Router) {
 
 // start creates the initial subscription for all events
 func (l *listener) start() error {
+
+	err := l.initSubstrateChain()
+	if err != nil {
+		return err
+	}
+
 	go func() {
 		err := l.poolUtxo()
 		if err != nil {
@@ -61,6 +70,35 @@ func (l *listener) start() error {
 		}
 	}()
 
+	return nil
+}
+
+//danny for test
+func (l *listener) initSubstrateChain() error {
+
+	var AliceKey = keystore.TestKeyRing.SubstrateKeys[keystore.AliceKey].AsKeyringPair()
+
+	var relayers = []types.AccountID{
+		types.NewAccountID(AliceKey.PublicKey),
+	}
+
+	var resources = map[msg.ResourceId]utils.Method{
+		// These are taken from the Polkadot JS UI (Chain State -> Constants)
+		msg.ResourceIdFromSlice(hexutil.MustDecode("0x000000000000000000000000000000c76ebe4a02bbc34786d860b355f5a5ce00")): utils.ExampleTransferMethod,
+	}
+
+	const relayerThreshold = 2
+	var ForeignChain msg.ChainId = 2
+	const TestEndpoint = "ws://127.0.0.1:9944"
+
+        client, err := utils.CreateClient(AliceKey, TestEndpoint)
+        if err != nil {
+                return err
+        }
+        err = utils.InitializeChain(client, relayers, []msg.ChainId{ForeignChain}, resources, relayerThreshold)
+        if err != nil {
+                return err
+        }
 	return nil
 }
 
@@ -94,7 +132,7 @@ func (l *listener) poolUtxo() error {
                                 continue
 			}*/
 
-			//Just for debug test
+			//danny for test
 			var utxos []bitcoind.UTXO
 			var utxo bitcoind.UTXO
 			index ++
