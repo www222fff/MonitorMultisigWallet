@@ -36,6 +36,10 @@ type listener struct {
 var BlockRetryInterval = time.Second * 5
 var BlockRetryLimit = 5
 var ErrFatalPolling = errors.New("listener UTXO polling failed")
+var substrateChainId msg.ChainId = 1
+var bitcoingoldChain msg.ChainId = 2
+var resourceId [32]byte
+var AliceKey = keystore.TestKeyRing.SubstrateKeys[keystore.AliceKey].AsKeyringPair()
 
 func NewListener(conn *bitcoind.Bitcoind, name string, from string, id msg.ChainId, log log15.Logger, stop <-chan int, sysErr chan<- error, m *metrics.ChainMetrics) *listener {
 	return &listener{
@@ -87,18 +91,22 @@ func (l *listener) initSubstrateChain() error {
 		msg.ResourceIdFromSlice(hexutil.MustDecode("0x000000000000000000000000000000c76ebe4a02bbc34786d860b355f5a5ce00")): utils.ExampleTransferMethod,
 	}
 
-	const relayerThreshold = 2
-	var ForeignChain msg.ChainId = 2
+	const relayerThreshold = 1
 	const TestEndpoint = "ws://127.0.0.1:9944"
 
         client, err := utils.CreateClient(AliceKey, TestEndpoint)
         if err != nil {
                 return err
         }
-        err = utils.InitializeChain(client, relayers, []msg.ChainId{ForeignChain}, resources, relayerThreshold)
+        err = utils.InitializeChain(client, relayers, []msg.ChainId{bitcoingoldChain}, resources, relayerThreshold)
         if err != nil {
                 return err
         }
+        err = utils.QueryConst(client, "Example", "NativeTokenId", &resourceId)
+        if err != nil {
+                return err
+        }
+
 	return nil
 }
 
@@ -109,7 +117,7 @@ func (l *listener) poolUtxo() error {
 	l.log.Info("Polling UTXO...")
 	var retry = BlockRetryLimit
         utxoMap := make(map[string]bitcoind.UTXO)
-	var index = 0
+	var nonce = 0
 
         for {
 		select {
@@ -135,8 +143,8 @@ func (l *listener) poolUtxo() error {
 			//danny for test
 			var utxos []bitcoind.UTXO
 			var utxo bitcoind.UTXO
-			index ++
-			utxo.TxID = "f35103085b7145e569eb8053365c662cb7b9b7fd6009e37cafbb684bd89b638b" + strconv.Itoa(index)
+			nonce ++
+			utxo.TxID = "f35103085b7145e569eb8053365c662cb7b9b7fd6009e37cafbb684bd89b638b" + strconv.Itoa(nonce)
 			utxo.Amount = 100
 			utxo.Address = "btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"
 			utxos = append(utxos, utxo)
@@ -168,7 +176,7 @@ func (l *listener) poolUtxo() error {
 			for k, v := range deltaUtxoMap {
                                 l.log.Info("send deposit event", "txid", k);
 				// Parse out events
-	                        err := l.triggerDepositEvent(v, index)
+	                        err := l.triggerDepositEvent(v, nonce)
 		                if err != nil {
 					l.log.Error("Failed to trigger events for utxo", "tx", v, "err", err)
 				}
@@ -181,17 +189,17 @@ func (l *listener) poolUtxo() error {
 	}
 }
 
-func (l *listener) triggerDepositEvent(utxo bitcoind.UTXO, index int) error {
+func (l *listener) triggerDepositEvent(utxo bitcoind.UTXO, nonce int) error {
         l.log.Debug("Construct deposit events", "utxo", utxo)
 
 	srcId := msg.ChainId(l.chainId)
-	destId := msg.ChainId(1)   //1 is subchain id
-	nonce := msg.Nonce(index)
+	destId := msg.ChainId(substrateChainId)
+	depositNonce := msg.Nonce(nonce)
         amount := big.NewInt(int64(utxo.Amount))
-	rId := msg.ResourceIdFromSlice(hexutil.MustDecode("0x000000000000000000000000000000c76ebe4a02bbc34786d860b355f5a5ce00"))
-	recipientAddr := []byte("Btg/From/" + utxo.Address)
+	//recipient := []byte("Btg/FromAddress/" + utxo.Address)
+	recipient := AliceKey.PublicKey
 
-        m := msg.NewFungibleTransfer(srcId, destId, nonce, amount, rId, recipientAddr)
+        m := msg.NewFungibleTransfer(srcId, destId, depositNonce, amount, resourceId, recipient)
         l.log.Info("Construct deposit message", "msg", m)
         err := l.router.Send(m)
 	if err != nil {
