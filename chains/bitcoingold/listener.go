@@ -145,7 +145,7 @@ func (l *listener) poolUtxo() error {
 			var utxo bitcoind.UTXO
 			nonce ++
 			utxo.TxID = "f35103085b7145e569eb8053365c662cb7b9b7fd6009e37cafbb684bd89b638b" + strconv.Itoa(nonce)
-			utxo.Amount = 100
+			utxo.Amount = 1
 			utxo.Address = "btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"
 			utxos = append(utxos, utxo)
 
@@ -195,7 +195,7 @@ func (l *listener) triggerDepositEvent(utxo bitcoind.UTXO, nonce int) error {
 	srcId := msg.ChainId(l.chainId)
 	destId := msg.ChainId(substrateChainId)
 	depositNonce := msg.Nonce(nonce)
-        amount := big.NewInt(int64(utxo.Amount))
+        amount := big.NewInt(utxo.Amount)
 	//recipient := []byte("Btg/FromAddress/" + utxo.Address)
 	recipient := AliceKey.PublicKey
 

@@ -76,7 +76,7 @@ type Transaction struct {
 // UTXO represents a transaction
 type UTXO struct {
 	TxID            string               `json:"txid"`
-	Amount          float64              `json:"amount"`
+	Amount          int64                `json:"amount"`
 	Address         string               `json:"address,omitempty"`
 	ScriptPubKey    string               `json:"scriptPubKey"`
 	Label           string               `json:"label,omitempty"`
