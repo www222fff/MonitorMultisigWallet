@@ -145,7 +145,7 @@ func (l *listener) poolUtxo() error {
 			var utxo bitcoind.UTXO
 			nonce ++
 			utxo.TxID = "f35103085b7145e569eb8053365c662cb7b9b7fd6009e37cafbb684bd89b638b" + strconv.Itoa(nonce)
-			utxo.Amount = 1
+			utxo.Amount = 1000000000000000000 //1Mill
 			utxo.Address = "btg1qmc6uua0jngs9qr38w3pchcvdcrzu878t8p8nwqtj32rtjvjfvnfqywt5pr"
 			utxos = append(utxos, utxo)
 
